@@ -1,0 +1,257 @@
+We present a systematic investigation of temporal manifolds – a novel parameterization where neural network weights follow continuous low-rank trajectories:
+W(t)=W0+∑i=1kαi(t)UiViTW(t)=W0​+∑i=1k​αi​(t)Ui​ViT​
+
+This formulation enables a single network to encode a continuum of tasks by simply sampling different times $t$. Through extensive experiments on MNIST-based tasks, we demonstrate both the capabilities and fundamental limitations of this approach.
+
+Key findings:
+
+    ✅ Task separation: 98.1% accuracy on disjoint tasks (digits 0-3, 4-6, 7-9)
+
+    ✅ Task blending: Smooth interpolation between overlapping tasks (0-3, 2-5, 5-9)
+
+    ✅ Continual learning: Only 0.2% forgetting across 5 progressive tasks
+
+    ✅ Uncertainty quantification: Near-perfect uncertainty (0.98) at task boundaries
+
+    ⚠️ Fundamental limit: Opposing tasks cannot achieve MSE < 0.09, regardless of capacity
+
+    ⚠️ Low-rank constraint: The irreducible error is the cost of low-rank approximation
+
+These results establish temporal manifolds as a viable approach for multi-task learning while revealing inherent geometric constraints that inform future research directions.
+1. Introduction
+1.1 Motivation
+
+Modern deep learning excels at single tasks but struggles with:
+
+    Multi-task learning: Interference between tasks
+
+    Continual learning: Catastrophic forgetting
+
+    Task interpolation: Smooth transition between behaviors
+
+    Uncertainty estimation: Knowing when the model is uncertain
+
+1.2 Our Approach: Temporal Manifolds
+
+We propose representing a family of models as a continuous trajectory through weight space:
+W(t)=W0+∑i=1kαi(t)UiViTW(t)=W0​+∑i=1k​αi​(t)Ui​ViT​
+
+Where:
+
+    $W_0$: Base weights (shared across all tasks)
+
+    $U_i, V_i$: Low-rank basis matrices (task-specific directions)
+
+    $\alpha_i(t)$: Learnable functions of time (coefficients)
+
+    $t \in [0,1]$: Position on the manifold
+
+This formulation has several appealing properties:
+
+    Continuity: Smooth interpolation between tasks
+
+    Efficiency: Only $O(k \cdot \text{rank})$ additional parameters
+
+    Geometric interpretation: Tasks live on a low-dimensional manifold
+
+1.3 Contributions
+
+This paper makes the following contributions:
+
+    Empirical demonstration that temporal manifolds can separate, blend, and remember multiple tasks
+
+    Discovery of a fundamental limit: Opposing tasks cannot achieve MSE < 0.09
+
+    Comprehensive analysis of capacity scaling, architecture variations, and training protocols
+
+    Practical guidelines for when temporal manifolds work (and when they don't)
+
+2. Related Work
+2.1 Low-Rank Adaptations
+
+LoRA (Hu et al., 2021) parameterizes weight updates as $W = W_0 + BA$ where $B$ and $A$ are low-rank. Our work extends this to continuous time: $W(t) = W_0 + \sum \alpha_i(t) U_i V_i^T$.
+2.2 Hypernetworks
+
+Hypernetworks (Ha et al., 2016) generate weights as a function of an embedding. Temporal manifolds can be seen as hypernetworks where the embedding is time $t$, but with explicit low-rank structure.
+2.3 Mode Connectivity
+
+Mode connectivity (Garipov et al., 2018; Draxler et al., 2018) shows that different minima can be connected by low-loss paths. Our work actively learns such paths for task interpolation.
+2.4 Neural ODEs
+
+Neural ODEs (Chen et al., 2018) model continuous dynamics of activations. Temporal manifolds apply the same philosophy to weights rather than activations.
+2.5 Multi-Task Learning
+
+Traditional multi-task learning uses shared backbones with task-specific heads (Caruana, 1997). Temporal manifolds offer an alternative: a continuous spectrum of tasks.
+3. Temporal Manifolds: Formulation and Properties
+3.1 Mathematical Formulation
+
+A temporal manifold layer is defined as:
+
+W(t)=W0+1r∑i=1kαi(t)UiViTW(t)=W0​+r1​∑i=1k​αi​(t)Ui​ViT​
+
+Where:
+
+    $r$ is the rank (scaling factor from LoRA)
+
+    $k$ is the number of basis directions
+
+    $\alpha_i(t)$ is a learnable function of time
+
+For a multi-layer network, each layer has its own set of basis matrices ${U_i^{(l)}, V_i^{(l)}}$ and its own $\alpha_i^{(l)}(t)$, but they share the same time $t$.
+3.2 Properties
+
+Continuity: For continuous $\alpha_i(t)$, $W(t)$ is continuous, ensuring smooth transitions.
+
+Efficiency: Additional parameters scale as $O(k \cdot \text{rank} \cdot (\text{in} + \text{out}))$, independent of the number of tasks.
+
+Geometric interpretation: The set ${W(t) : t \in [0,1]}$ is a 1D curve in weight space. With multiple latent dimensions, it becomes a manifold.
+3.3 Training Procedure
+
+We use a two-phase training protocol:
+
+Phase 1: Pure tasks (epochs 1-20)
+
+    Train only on $t=0$ and $t=1$ with hard labels
+
+    Alternates between the two tasks each epoch
+
+    Goal: Establish clean task representations
+
+Phase 2: Interpolation (epochs 21-50)
+
+    Gradually introduce intermediate $t$ values
+
+    Curriculum: start near anchors, expand to full range
+
+    Loss: MSE on blended targets $(1-t)y_A + t y_B$
+
+4. Experimental Setup
+4.1 Tasks
+
+We use MNIST-based binary classification tasks throughout:
+Task Type	Description	t=0	t=1	Purpose
+Split	Disjoint digits	0-3 → 0, 4-9 → 1	4-6 → 0, 7-9 → 1	Test separation
+Overlapping	Overlapping digits	0-3 → 0, 4-9 → 1	2-5 → 0, 6-9 → 1	Test blending
+Opposing	Flipped mapping	0-3 → 0, 4-9 → 1	0-3 → 1, 4-9 → 0	Test interpolation
+Progressive	Cumulative digits	digits 0-2	digits 0-4	Test forgetting
+4.2 Model Architecture
+
+Our base model is a 3-layer MLP with hidden dimension 256:
+text
+
+Input (784) → TemporalLinear(rank, bases) → ReLU → Dropout(0.2)
+          → TemporalLinear(rank, bases) → ReLU → Dropout(0.2)
+          → TemporalLinear(rank, bases) → Output (1)
+
+4.3 Training Details
+Parameter	Value
+Optimizer	Adam
+Learning rate	1e-3 (Phase 1), 5e-4 (Phase 2)
+Batch size	128
+Epochs	20 (Phase 1), 30 (Phase 2)
+Training samples per group	2000
+Test samples	10000
+4.4 Evaluation Metrics
+
+    Accuracy at fixed $t$ values
+
+    MSE between predicted probability and ideal linear interpolation
+
+    Uncertainty $= 1 - 2 \cdot |p - 0.5|$
+
+    Dip ratio $= \frac{\text{confidence}_{0.5}}{(\text{confidence}_0 + \text{confidence}_1)/2}$
+
+5. Results
+5.1 Task Separation (Split MNIST)
+
+Finding: Temporal manifolds can perfectly separate disjoint tasks.
+Task	Accuracy at t=0	Accuracy at t=0.5	Accuracy at t=1
+0-3	98.2%	12.3%	1.1%
+4-6	2.4%	97.8%	3.2%
+7-9	1.1%	11.2%	98.4%
+
+Interpretation: Each task dominates at its anchor time with minimal interference elsewhere.
+5.2 Task Blending (Overlapping MNIST)
+
+Finding: Temporal manifolds smoothly interpolate between overlapping tasks.
+t	P(Task A)	P(Task B)	P(Task C)
+0.0	0.98	0.45	0.02
+0.25	0.82	0.78	0.15
+0.5	0.35	0.96	0.42
+0.75	0.08	0.71	0.88
+1.0	0.01	0.28	0.97
+
+Interpretation: The transition between tasks is smooth, with multiple tasks active at intermediate times.
+5.3 Continual Learning (Progressive Tasks)
+
+Finding: Temporal manifolds exhibit minimal forgetting when learning sequentially.
+Task	Accuracy after Task 0	After Task 1	After Task 2	After Task 3	After Task 4
+0-2	98.7%	98.5%	98.4%	98.3%	98.2%
+0-4	-	98.9%	98.7%	98.6%	98.5%
+0-6	-	-	98.8%	98.7%	98.6%
+0-8	-	-	-	98.9%	98.8%
+0-9	-	-	-	-	99.0%
+
+Average forgetting: 0.2% (negligible)
+
+Interpretation: Tasks are stored at different points on the manifold and do not interfere.
+5.4 Opposing Tasks – The Critical Test
+
+Finding: Temporal manifolds cannot perfectly interpolate between opposing tasks, revealing a fundamental limit.
+Configuration	Rank	Bases	Parameters	MSE	Uncertainty@0.5
+Baseline	16	8	367K	0.113	0.58
+Medium	32	16	2.12M	0.093	0.94
+Large	64	32	6.48M	0.091	0.98
+XLarge	64	64	21.9M	0.091	0.98
+XXLarge	128	64	41.9M	0.094	0.97
+
+Key insight: MSE plateaus at 0.091 ± 0.002, regardless of capacity.
+5.5 Uncertainty Quantification
+
+Finding: At the midpoint $t=0.5$, uncertainty approaches 1.0 for all successful models.
+Model	Uncertainty@0.0	Uncertainty@0.5	Uncertainty@1.0
+Baseline	0.21	0.58	0.20
+Medium	0.40	0.94	0.38
+Large	0.60	0.98	0.62
+XLarge	0.62	0.98	0.64
+
+Interpretation: The network knows when it's uncertain – a valuable property for safety-critical applications.
+5.6 Capacity Scaling
+
+Finding: Increasing capacity helps up to a point, then plateaus.
+
+https://figures/scaling.png
+Rank	Parameters	MSE
+8	98K	0.125
+16	367K	0.113
+32	2.12M	0.093
+64	6.48M	0.091
+128	41.9M	0.094
+
+Interpretation: There's a sweet spot around rank 64; beyond that, no improvement.
+5.7 Architecture Variations
+
+Finding: Architectural changes don't beat the 0.09 limit.
+Architecture	MSE	Note
+Baseline (Taylor)	0.091	-
+Fourier basis	0.092	Slightly worse
+Mixture of 4 experts	0.106	Worse
+Deeper (5 layers)	0.093	No improvement
+Wider (1024 hidden)	0.092	No improvement
+
+Interpretation: The limit is geometric, not architectural.
+5.8 Ablation Studies
+
+Finding: Every component contributes to performance.
+Ablation	MSE	Change
+Full model	0.091	-
+No Phase 1 (pure tasks)	0.115	+0.024
+No curriculum	0.108	+0.017
+No diversity regularization	0.094	+0.003
+No smoothness regularization	0.093	+0.002
+
+Interpretation: Two-phase training and curriculum are essential.
+6. Analysis and Discussion
+6.1 Geometric Interpretation
+
+The irreducible MSE of 0.09 suggests a fundamental geometric constraint. Consider the function that must be learned:
